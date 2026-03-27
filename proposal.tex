@@ -1,0 +1,123 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\title{Does N-gram Conditional Memory Help Small Dense Transformers? A Minimal Replication of DeepSeek's Engram}
+\author{Kohki Hatori \and Haoran Su \and Khoa Cao}
+\date{CS505: Natural Language Processing, Boston University}
+
+\begin{document}
+\maketitle
+
+\section{Task Description}
+\subsection{Problem Statement}
+
+Standard transformer language models predict the next token using attention over all prior hidden states, but they have no dedicated mechanism for recalling stereotyped surface patterns — multi-token named entities, formulaic phrases, and other local n-gram regularities. Classical n-gram models capture these patterns cheaply via lookup tables, but modern neural LMs discard them entirely, forcing the network to reconstruct static associations through layers of attention and feed-forward computation.
+
+DeepSeek's Engram paper (Cheng et al., 2025) proposes \textbf{conditional memory} as a complementary axis of model capacity: a trainable, hash-addressed n-gram embedding module that is inserted into specific transformer layers and trained jointly from scratch with the backbone. At each position $t$, the module retrieves a memory vector $\mathbf{e}_t$ by hashing the local token context, then gates its contribution to the hidden state using the current representation as a query:
+\begin{align}
+\mathbf{e}_t &= \bigoplus_{n=2}^{N} \bigoplus_{k=1}^{K} E_{n,k}\left[\varphi_{n,k}(x_{t-n+1}, \ldots, x_t)\right], \\
+\alpha_t &= \sigma\left(\frac{\mathrm{RMSNorm}(\mathbf{h}_t)^{\top} \, \mathrm{RMSNorm}(W_K \mathbf{e}_t)}{\sqrt{d}}\right), \\
+\Delta \mathbf{h}_t &= \alpha_t \cdot W_V \mathbf{e}_t, \\
+\mathbf{h}_t &\leftarrow \mathbf{h}_t + \Delta \mathbf{h}_t + \mathrm{ShortConv}(\Delta \mathbf{h}_t),
+\end{align}
+where $\varphi_{n,k}$ is a multiplicative-XOR hash, $E_{n,k}$ denotes a learned embedding table of prime size, and $W_K, W_V$ are learned projections. The residual fusion precedes the attention and MLP sublayers.
+
+Engram was validated on 27--40B parameter Mixture-of-Experts models trained on 262B tokens with a multi-branch residual stream (mHC, $M=4$). Our project isolates the core hypothesis: \textbf{Does n-gram conditional memory alone benefit a compact, standard dense transformer trained from scratch?}
+
+\subsection{Why it is interesting}
+The headline gains reported in (Cheng et al., 2025) (e.g., BBH $+5.0$, MMLU $+3.4$ over an iso-FLOPs MoE baseline) coincide with other architectural innovations, including the manifold-constrained hyper-connection (mHC) layout, MoE routing, and massive scale. Practitioners seeking to deploy Engram in conventional dense architectures need to know whether the n-gram memory mechanism drives the improvement or if its effect depends on those large-scale design choices.
+
+\subsection{Why it is challenging}
+\begin{enumerate}
+    \item \textbf{Missing training infrastructure.} The public Engram repository only exposes a forward-pass demonstration with mocked attention, so we must build a full training loop.
+    \item \textbf{Architectural simplification.} Engram's published results employ $hc\_mult = 4$ (multi-branch residual streams). Dense transformers operate with $hc\_mult = 1$, and prior ablations indicate that this choice matters, so we will be measuring the performance cost directly.
+    \item \textbf{Tokenizer adaptation.} The tokenizer compression strategy (NFKC normalization, $23\%$ vocabulary reduction) is tailored to the DeepSeek 128k tokenizer. We must reproduce its intent for GPT-2's 50{,}257-token BPE vocabulary.
+\end{enumerate}
+
+\section{Project Outline}
+\subsection{Model Architecture}
+We train a GPT-2-small-scale dense transformer (12 layers, hidden size 768, 12 heads, roughly 85M non-embedding parameters) with pre-LayerNorm, causal self-attention, and standard MLP blocks. Two primary variants are considered:
+\begin{itemize}
+    \item \textbf{Baseline}: plain transformer without conditional memory.
+    \item \textbf{\texttt{+}Engram}: Engram modules inserted after layers 2 and 6, following the original study's preference for early injection.
+\end{itemize}
+
+For the Engram variant we restrict to $hc\_mult = 1$ and use bigrams and trigrams ($N=3$) with eight hash heads per order. Each head produces a 256-dimensional embedding, and the total number of n-gram slots is tuned so that the Engram model adds roughly 20--30\% more parameters than the baseline, preserving approximate iso-FLOPs comparisons.
+
+\subsection{Dataset}
+We use WikiText-103 (Merity et al., 2016), containing 103M tokens of Wikipedia text. Training runs up to 100k steps with batch size 32 and sequence length 512 (\(\approx 1.6\times10^9\) token-steps), which fits within 6--12 hours on one or two NVIDIA A100 GPUs.
+
+\subsection{Software Stack}
+\begin{itemize}
+    \item PyTorch for model definition and training.
+    \item HuggingFace \texttt{datasets} and \texttt{tokenizers} for data handling.
+    \item The provided \texttt{engram\_demo\_v1.py} for reference implementation details.
+    \item SLURM on Boston University's SCC cluster.
+\end{itemize}
+
+\subsection{Methods and Controls}
+We train four configurations to reveal the sources of improvement:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Model & Description \\
+\midrule
+\textbf{Baseline} & Dense transformer trained from scratch. \\
+\texttt{+}\textbf{Params} & Baseline + an extra dense MLP block with \\
+                & the same parameter increase as Engram (iso-parameter control). \\
+\texttt{+}\textbf{Engram} (frozen gates) & Engram embeddings trainable but gating fixed at $\alpha_t = 0.5$, \\
+                                        & removing context-aware modulation. \\
+\texttt{+}\textbf{Engram} (full) & Full conditional memory with learned gating. \\
+\bottomrule
+\end{tabular}
+\end{center}
+The \texttt{+}Params control verifies that improvements stem from structured n-gram memory rather than a generic parameter increase.
+
+\section{Experimental Design}
+\subsection{Primary Metric}
+\textbf{Perplexity (PPL)} on the WikiText-103 test split is the main metric, aligning with standard LM evaluations and the measurements reported in (Cheng et al., 2025).
+
+\subsection{Diagnostic Analyses}
+To see where Engram helps, we report:
+\begin{itemize}
+    \item \textbf{Named-entity completion accuracy}: accuracy for tokens that complete named entities, extracted with spaCy. Engram's gating heatmaps suggest heightened activity on such spans.
+    \item \textbf{Formulaic phrase accuracy}: accuracy on bigrams and trigrams within the top $0.1\%$ of corpus frequency, directly testing the n-gram memory hypothesis.
+    \item \textbf{Gating visualizations}: plots of $\alpha_t$ trajectories to confirm activation patterns similar to those in Figure 7 of (Cheng et al., 2025).
+\end{itemize}
+
+\subsection{Ablations}
+In addition to the four core models we plan the following ablations (time permitting):
+\begin{itemize}
+    \item Vary Engram insertion depth (layer 2 only, layers 2 and 6, layer 6 only).
+    \item Limit the n-gram order (bigrams only versus bigram+trigram).
+    \item N-gram embedding table sizes (5M, 20M, and 80M slots) to gauge memory capacity effects.
+\end{itemize}
+
+\section{Feasibility}
+\subsection{Compute Budget}
+A 12-layer, 768-dimension model trained with the stated hyperparameters completes 100k steps in roughly 6--10 hours on a single A100. We can run 4 models
+in parallel or sequentially within the project window
+
+\subsection{Engineering Scope}
+Key implementation tasks include adapting the Engram forward pass to a standard transformer (\(hc\_mult = 1\)), integrating it into a from-scratch training loop (\(\approx 200\) lines of PyTorch), and adapting the tokenizer compression pipeline to GPT-2's vocabulary. Each component is straightforward for a team with fine-tuning experience.
+
+\subsection{Limitations}
+Because we forgo the multi-branch mHC architecture, our study measures a simplified Engram instantiation. We will report results as an \emph{ablation of conditional memory in isolation} and avoid over-generalizing to the full-scale architecture, which is itself a novel empirical finding not presented in the original paper.
+
+\section{References}
+
+\begin{itemize}
+    \item Cheng, X., Zeng, W., Dai, D., et al. (2025). \emph{Conditional Memory via Scalable Lookup: A New Axis of Sparsity for Large Language Models}. DeepSeek AI. GitHub: \url{https://github.com/deepseek-ai/Engram}.
+    \item Merity, S., Xiong, C., Bradbury, J., \& Socher, R. (2016). \emph{Pointer Sentinel Mixture Models}. ICLR 2017. [WikiText-103]
+\end{itemize}
+
+\end{document}

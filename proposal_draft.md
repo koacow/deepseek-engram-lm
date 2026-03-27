@@ -119,6 +119,4 @@ To understand *where* Engram helps (motivated by the paper's sensitivity analysi
 **Important: verify all details manually before submission. Do not submit without checking author names, years, and venues against the actual papers.**
 
 - Cheng, X., Zeng, W., Dai, D., et al. (2025). *Conditional Memory via Scalable Lookup: A New Axis of Sparsity for Large Language Models.* DeepSeek AI. GitHub: https://github.com/deepseek-ai/Engram
-- Radford, A., Wu, J., Child, R., Luan, D., Amodei, D., & Sutskever, I. (2019). *Language Models are Unsupervised Multitask Learners.* OpenAI Blog.
-- Merity, S., Xiong, C., Bradbury, J., & Socher, R. (2017). *Pointer Sentinel Mixture Models.* ICLR 2017. [WikiText-103]
-- Xie, Z., et al. (2025). *Manifold-Constrained Hyper-Connections.* [mHC architecture — verify full citation]
+- Merity, S., Xiong, C., Bradbury, J., & Socher, R. (2016). *Pointer Sentinel Mixture Models.* ICLR 2017. [WikiText-103]
