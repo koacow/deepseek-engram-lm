@@ -22,14 +22,7 @@
 
 Standard transformer language models predict the next token using attention over all prior hidden states, but they have no dedicated mechanism for recalling stereotyped surface patterns — multi-token named entities, formulaic phrases, and other local n-gram regularities. Classical n-gram models capture these patterns cheaply via lookup tables, but modern neural LMs discard them entirely, forcing the network to reconstruct static associations through layers of attention and feed-forward computation.
 
-DeepSeek's Engram paper (Cheng et al., 2025) proposes \textbf{conditional memory} as a complementary axis of model capacity: a trainable, hash-addressed n-gram embedding module that is inserted into specific transformer layers and trained jointly from scratch with the backbone. At each position $t$, the module retrieves a memory vector $\mathbf{e}_t$ by hashing the local token context, then gates its contribution to the hidden state using the current representation as a query:
-\begin{align}
-\mathbf{e}_t &= \bigoplus_{n=2}^{N} \bigoplus_{k=1}^{K} E_{n,k}\left[\varphi_{n,k}(x_{t-n+1}, \ldots, x_t)\right], \\
-\alpha_t &= \sigma\left(\frac{\mathrm{RMSNorm}(\mathbf{h}_t)^{\top} \, \mathrm{RMSNorm}(W_K \mathbf{e}_t)}{\sqrt{d}}\right), \\
-\Delta \mathbf{h}_t &= \alpha_t \cdot W_V \mathbf{e}_t, \\
-\mathbf{h}_t &\leftarrow \mathbf{h}_t + \Delta \mathbf{h}_t + \mathrm{ShortConv}(\Delta \mathbf{h}_t),
-\end{align}
-where $\varphi_{n,k}$ is a multiplicative-XOR hash, $E_{n,k}$ denotes a learned embedding table of prime size, and $W_K, W_V$ are learned projections. The residual fusion precedes the attention and MLP sublayers.
+DeepSeek's Engram paper (Cheng et al., 2025) proposes \textbf{conditional memory} as a complementary axis of model capacity: a trainable, hash-addressed n-gram embedding module that is inserted into specific transformer layers and trained jointly from scratch with the backbone.
 
 Engram was validated on 27--40B parameter Mixture-of-Experts models trained on 262B tokens with a multi-branch residual stream (mHC, $M=4$). Our project isolates the core hypothesis: \textbf{Does n-gram conditional memory alone benefit a compact, standard dense transformer trained from scratch?}
 
@@ -54,15 +47,10 @@ We train a GPT-2-small-scale dense transformer (12 layers, hidden size 768, 12 h
 For the Engram variant we restrict to $hc\_mult = 1$ and use bigrams and trigrams ($N=3$) with eight hash heads per order. Each head produces a 256-dimensional embedding, and the total number of n-gram slots is tuned so that the Engram model adds roughly 20--30\% more parameters than the baseline, preserving approximate iso-FLOPs comparisons.
 
 \subsection{Dataset}
-We use WikiText-103 (Merity et al., 2016), containing 103M tokens of Wikipedia text. Training runs up to 100k steps with batch size 32 and sequence length 512 (\(\approx 1.6\times10^9\) token-steps), which fits within 6--12 hours on one or two NVIDIA A100 GPUs.
+We use \textbf{WikiText-103} (Merity et al., 2016), containing 103M tokens of Wikipedia text. 
 
 \subsection{Software Stack}
-\begin{itemize}
-    \item PyTorch for model definition and training.
-    \item HuggingFace \texttt{datasets} and \texttt{tokenizers} for data handling.
-    \item The provided \texttt{engram\_demo\_v1.py} for reference implementation details.
-    \item SLURM on Boston University's SCC cluster.
-\end{itemize}
+\textbf{PyTorch} for model definition and training. \textbf{HuggingFace} \texttt{datasets} and \texttt{tokenizers} for data handling. The provided \texttt{engram\_demo\_v1.py} for reference implementation details. \textbf{Boston University's SCC} for computational resources.
 
 \subsection{Methods and Controls}
 We train four configurations to reveal the sources of improvement:
@@ -91,27 +79,8 @@ To see where Engram helps, we report:
 \begin{itemize}
     \item \textbf{Named-entity completion accuracy}: accuracy for tokens that complete named entities, extracted with spaCy. Engram's gating heatmaps suggest heightened activity on such spans.
     \item \textbf{Formulaic phrase accuracy}: accuracy on bigrams and trigrams within the top $0.1\%$ of corpus frequency, directly testing the n-gram memory hypothesis.
-    \item \textbf{Gating visualizations}: What does the model memorize? plots of $\alpha_t$ trajectories to confirm activation patterns similar to those in Figure 7 of (Cheng et al., 2025).
+    \item \textbf{Gating visualizations}: What does the model memorize? Plot $\alpha_t$ trajectories to confirm activation patterns similar to those in Figure 7 of (Cheng et al., 2025).
 \end{itemize}
-
-\subsection{Ablations}
-In addition to the four core models we plan the following ablations (time permitting):
-\begin{itemize}
-    \item Vary Engram insertion depth (layer 2 only, layers 2 and 6, layer 6 only).
-    \item Limit the n-gram order (bigrams only versus bigram+trigram).
-    \item N-gram embedding table sizes (5M, 20M, and 80M slots) to gauge memory capacity effects.
-\end{itemize}
-
-\section{Feasibility}
-\subsection{Compute Budget}
-A 12-layer, 768-dimension model trained with the stated hyperparameters completes 100k steps in roughly 6--10 hours on a single A100. We can run 4 models
-in parallel or sequentially within the project window
-
-\subsection{Engineering Scope}
-Key implementation tasks include adapting the Engram forward pass to a standard transformer (\(hc\_mult = 1\)), integrating it into a from-scratch training loop (\(\approx 200\) lines of PyTorch), and adapting the tokenizer compression pipeline to GPT-2's vocabulary. Each component is straightforward for a team with fine-tuning experience.
-
-\subsection{Limitations}
-Because we forgo the multi-branch mHC architecture, our study measures a simplified Engram instantiation. We will report results as an \emph{ablation of conditional memory in isolation} and avoid over-generalizing to the full-scale architecture, which is itself a novel empirical finding not presented in the original paper.
 
 \section{References}
 
