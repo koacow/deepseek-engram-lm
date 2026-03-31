@@ -90,7 +90,7 @@ To understand *where* Engram helps (motivated by the paper's sensitivity analysi
 
 - **Named entity next-token accuracy** — accuracy at positions where the ground-truth token completes a named entity (extracted via spaCy). Engram's gating visualizations show strong activation on multi-token entities ("Alexander the Great", "Princess of Wales").
 - **Formulaic phrase accuracy** — accuracy on high-frequency fixed phrases (e.g., bigrams in the top 0.1% of corpus frequency). This directly tests the n-gram memory hypothesis.
-- **Gating visualization** — for the +Engram model, visualize $\alpha_t$ across token positions (replicating Figure 7 of the paper) to verify the module activates on the expected token types.
+- **Gating visualization** — What does the model memorize? for the +Engram model, visualize $\alpha_t$ across token positions (replicating Figure 7 of the paper) to verify the module activates on the expected token types.
 
 ### Baselines
 
