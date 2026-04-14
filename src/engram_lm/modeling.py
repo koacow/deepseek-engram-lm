@@ -220,7 +220,6 @@ class EngramAdapter(nn.Module):
         self.short_conv = nn.Conv1d(cfg.d_model, cfg.d_model, kernel_size=4,
                             groups=cfg.d_model, padding=0)
         self.short_conv_norm = RMSNorm(cfg.d_model)
-        nn.init.zeros_(self.short_conv.weight)
         nn.init.zeros_(self.short_conv.bias)
         self.gate_frozen = cfg.engram_gate_frozen
 
@@ -246,8 +245,8 @@ class EngramAdapter(nn.Module):
             gate = torch.sigmoid(score)
 
         delta = gate * value
-        # Then in forward, manually pad the left:
-        conv_in = self.short_conv_norm(F.pad(delta.transpose(1, 2), (3, 0)))  # pad left only
+        # Normalize delta, pad left for causal conv, apply conv, and add back to delta
+        conv_in = F.pad(self.short_conv_norm(delta).transpose(1, 2), (3, 0))
         conv_out = F.silu(self.short_conv(conv_in)).transpose(1, 2)
         return delta + conv_out
 
@@ -331,6 +330,8 @@ class EngramLM(_BaseLM):
 
     def forward(self, input_ids: torch.Tensor, labels: Optional[torch.Tensor] = None):
         b, t = input_ids.shape
+        if t > self.cfg.block_size:
+            raise ValueError(f"Sequence length {t} exceeds block size {self.cfg.block_size}")
         pos = torch.arange(t, device=input_ids.device).unsqueeze(0)
         x = self.drop(self.tok_emb(input_ids) + self.pos_emb(pos))
         for idx, block in enumerate(self.blocks):
