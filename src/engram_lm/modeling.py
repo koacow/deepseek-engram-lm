@@ -248,6 +248,20 @@ class EngramAdapter(nn.Module):
         return delta + conv_out
 
 
+def _causal_lm_loss(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """Cross-entropy loss with teacher-forcing causal shift.
+
+    logits[t] predicts position t+1, so we align logits[:, :-1] with
+    labels[:, 1:]. This is the standard next-token-prediction objective.
+    """
+    shift_logits = logits[:, :-1, :].contiguous()
+    shift_labels = labels[:, 1:].contiguous()
+    return F.cross_entropy(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1),
+    )
+
+
 class _BaseLM(nn.Module):
     def __init__(self, cfg: ExperimentConfig):
         super().__init__()
@@ -271,9 +285,7 @@ class _BaseLM(nn.Module):
             x = block(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
-        loss = None
-        if labels is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
+        loss = _causal_lm_loss(logits, labels) if labels is not None else None
         return logits, loss
 
 
@@ -299,9 +311,7 @@ class ParamsControlLM(_BaseLM):
                 x = x + self.control_layers[str(idx)](x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
-        loss = None
-        if labels is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
+        loss = _causal_lm_loss(logits, labels) if labels is not None else None
         return logits, loss
 
 
@@ -318,12 +328,12 @@ class EngramLM(_BaseLM):
         pos = torch.arange(t, device=input_ids.device).unsqueeze(0)
         x = self.drop(self.tok_emb(input_ids) + self.pos_emb(pos))
         for idx, block in enumerate(self.blocks):
+            x = block(x)
+            # Adapter inserted POST-block so the gating query sees the full
+            # block output (attn + FFN), matching the ControlAdapter insertion.
             if idx in self.cfg.engram_layers:
                 x = x + self.adapters[str(idx)](x, input_ids)
-            x = block(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
-        loss = None
-        if labels is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
+        loss = _causal_lm_loss(logits, labels) if labels is not None else None
         return logits, loss
