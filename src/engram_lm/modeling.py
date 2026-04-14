@@ -22,7 +22,7 @@ class ExperimentConfig:
     engram_layers: Tuple[int, ...] = (2, 6)
     engram_orders: Tuple[int, ...] = (2, 3)
     engram_heads_per_order: int = 8
-    engram_head_dim: int = 32
+    engram_head_dim: int = 256
     engram_gate_frozen: bool = False
     engram_table_target_size: int = 5_000_000
     control_adapter_width: int = 1536
@@ -216,8 +216,12 @@ class EngramAdapter(nn.Module):
         self.key_proj = nn.Linear(mem_dim, cfg.d_model)
         self.query_norm = RMSNorm(cfg.d_model)
         self.key_norm = RMSNorm(cfg.d_model)
-        self.short_conv = nn.Conv1d(cfg.d_model, cfg.d_model, kernel_size=4, groups=cfg.d_model, padding=3)
+        # Do not pad conv and manually pad left in forward
+        self.short_conv = nn.Conv1d(cfg.d_model, cfg.d_model, kernel_size=4,
+                            groups=cfg.d_model, padding=0)
         self.short_conv_norm = RMSNorm(cfg.d_model)
+        nn.init.zeros_(self.short_conv.weight)
+        nn.init.zeros_(self.short_conv.bias)
         self.gate_frozen = cfg.engram_gate_frozen
 
     def forward(self, hidden_states: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
@@ -242,9 +246,9 @@ class EngramAdapter(nn.Module):
             gate = torch.sigmoid(score)
 
         delta = gate * value
-        conv_in = delta.transpose(1, 2)
-        conv_out = self.short_conv(conv_in)[..., : delta.size(1)].transpose(1, 2)
-        conv_out = self.short_conv_norm(conv_out)
+        # Then in forward, manually pad the left:
+        conv_in = self.short_conv_norm(F.pad(delta.transpose(1, 2), (3, 0)))  # pad left only
+        conv_out = F.silu(self.short_conv(conv_in)).transpose(1, 2)
         return delta + conv_out
 
 
