@@ -12,9 +12,12 @@ from engram_lm.train import TrainConfig, train
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the Engram variant")
     parser.add_argument("--frozen-gates", action="store_true", help="Use fixed alpha_t = 0.5 gates")
-    parser.add_argument("--steps", type=int, default=1000)
-    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--steps", type=int, default=100_000)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--grad-accum", type=int, default=4, help="Gradient accumulation steps (effective batch = batch-size × grad-accum)")
     parser.add_argument("--output-dir", type=str, default="checkpoints")
+    parser.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint to resume from")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     train(
@@ -23,7 +26,10 @@ def main() -> None:
             engram_gate_frozen=args.frozen_gates,
             steps=args.steps,
             batch_size=args.batch_size,
+            grad_accum_steps=args.grad_accum,
             output_dir=args.output_dir,
+            resume_from=args.resume_from,
+            seed=args.seed,
         )
     )
 
