@@ -307,6 +307,8 @@ class ParamsControlLM(_BaseLM):
 
     def forward(self, input_ids: torch.Tensor, labels: Optional[torch.Tensor] = None):
         b, t = input_ids.shape
+        if t > self.cfg.block_size:
+            raise ValueError(f"Sequence length {t} exceeds block size {self.cfg.block_size}")
         pos = torch.arange(t, device=input_ids.device).unsqueeze(0)
         x = self.drop(self.tok_emb(input_ids) + self.pos_emb(pos))
         for idx, block in enumerate(self.blocks):
