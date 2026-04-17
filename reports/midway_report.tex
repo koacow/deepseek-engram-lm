@@ -42,6 +42,34 @@ A Minimal Replication of DeepSeek's Engram}
 % - Explain why the problem is interesting/important.
 % - Explain why the problem is hard and how obvious solutions fail.
 
+Language modeling involves two qualitatively different subproblems: reasoning about the compositional structure of language and knowledge retrieval.
+While compositional reasoning requires deep, dynamic computation — something standard transformer architectures are well-suited for — knowledge retrieval — multi-
+token named entities, formulaic phrases, and other local n-gram regularities, is often more static. 
+Classical n-gram models capture these patterns cheaply via lookup tables, but modern neural LMs discard them
+entirely, forcing the network to reconstruct static associations through layers of attention and feed-forward computation.
+
+DeepSeek's Engram paper (Cheng et al., 2025) proposes conditional memory as a complementary axis of model capacity: 
+a trainable, hash-addressed n-gram embedding module that is inserted into specific transformer layers and trained jointly from scratch with the backbone.
+It relies on sparse lookup operations to retrieve static embeddings for fixed-knowledge. The Engram module, specifically, is conditional memory grounded in
+the classic n-gram structure but with modern additions such as tokenizer compression, multi-head hashing, and contextual gating.
+
+The paper found that an Engram model, when compared to an equally sized dense transformer, achieved better performance on knowledge retrieval, general reasoning, 
+and code/math tasks. However, the gains reported coincided with other architectural innovations such as manifold-constrained hyper-connections (EXPLAIN \& CITE), MoE routing, 
+and a massive scale (27B parameters). It is thus unclear how much of the improvement can be attributed to the Engram module itself, and whether it would still be effective in smaller models.
+
+This project aims to answer the question: Does n-gram conditional memory alone benefit a compact, standard dense transformer trained from scratch? 
+
+Answering this question comes with a few engineering challenges. First, we must adapt forward pass demonstration in the public Engram repository to a full training loop for a 85M parameter GPT-2 style transformer. We also 
+simplify the multi-branch residual stream, which prior work has shown to be a key driver of Engram's performance (CITE), to a single branch. Finally,
+we must reproduce the paper's tokenizer compression technique, which was adapted to the DeepSeek 128k tokenizer, to work for GPT-2's 50k tokenizer.
+
+We train four models: a 85M parameter GPT-2 style transformer, a transformer with an extra dense MLP layer to match the later Engram models' parameter count,
+a transformer with an Engram module with gating fixed at $\alpha_t = 0.5$ (removing the contextual gating), and a transformer with an Engram module with learnable gating. 
+We train and evaluate the perplexity of these models on the WikiText-103 dataset (CITE).
+
+[INSERT RESULTS SUMMARY]
+
+
 \subsection{Problem Setup and Example}
 % Define task clearly (input/output, objective).
 % Provide one concrete motivating example.
