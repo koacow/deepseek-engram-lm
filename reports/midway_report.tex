@@ -42,58 +42,121 @@ A Minimal Replication of DeepSeek's Engram}
 % - Explain why the problem is interesting/important.
 % - Explain why the problem is hard and how obvious solutions fail.
 
+\subsection{Why This Problem Matters}
+% Scientific relevance and/or real-world impact.
+
 Language modeling involves two qualitatively different subproblems: reasoning about the compositional structure of language and knowledge retrieval.
 While compositional reasoning requires deep, dynamic computation — something standard transformer architectures are well-suited for — knowledge retrieval — multi-
 token named entities, formulaic phrases, and other local n-gram regularities, is often more static. 
 Classical n-gram models capture these patterns cheaply via lookup tables, but modern neural LMs discard them
 entirely, forcing the network to reconstruct static associations through layers of attention and feed-forward computation.
 
-DeepSeek's Engram paper (Cheng et al., 2025) proposes conditional memory as a complementary axis of model capacity: 
+DeepSeek's Engram paper \cite{cheng2026engram} proposes conditional memory as a complementary axis of model capacity: 
 a trainable, hash-addressed n-gram embedding module that is inserted into specific transformer layers and trained jointly from scratch with the backbone.
 It relies on sparse lookup operations to retrieve static embeddings for fixed-knowledge. The Engram module, specifically, is conditional memory grounded in
 the classic n-gram structure but with modern additions such as tokenizer compression, multi-head hashing, and contextual gating.
 
 The paper found that an Engram model, when compared to an equally sized dense transformer, achieved better performance on knowledge retrieval, general reasoning, 
-and code/math tasks. However, the gains reported coincided with other architectural innovations such as manifold-constrained hyper-connections (EXPLAIN \& CITE), MoE routing, 
+and code/math tasks. However, the gains reported coincided with other architectural innovations such as manifold-constrained hyper-connections - Deepseek's modified constrained residual connection structure that consists of multiple parallel branches that 
+fixes the instability problem of unconstrained hyper-connections \cite{xie2026mhcmanifoldconstrainedhyperconnections}, MoE routing, 
 and a massive scale (27B parameters). It is thus unclear how much of the improvement can be attributed to the Engram module itself, and whether it would still be effective in smaller models.
 
 This project aims to answer the question: Does n-gram conditional memory alone benefit a compact, standard dense transformer trained from scratch? 
 
+\subsection{Why It Is Difficult}
+% Describe failure modes of simple baseline(s) or obvious approaches.
+
 Answering this question comes with a few engineering challenges. First, we must adapt forward pass demonstration in the public Engram repository to a full training loop for a 85M parameter GPT-2 style transformer. We also 
-simplify the multi-branch residual stream, which prior work has shown to be a key driver of Engram's performance (CITE), to a single branch. Finally,
+simplify the multi-branch residual stream, which prior work has shown to be a key driver of Engram's performance (Larsson et al., 2017; Szegedy et al., 2015; Xie et al., 2025; Zhu et al., 2025), to a single branch. Finally,
 we must reproduce the paper's tokenizer compression technique, which was adapted to the DeepSeek 128k tokenizer, to work for GPT-2's 50k tokenizer.
-
-We train four models: a 85M parameter GPT-2 style transformer, a transformer with an extra dense MLP layer to match the later Engram models' parameter count,
-a transformer with an Engram module with gating fixed at $\alpha_t = 0.5$ (removing the contextual gating), and a transformer with an Engram module with learnable gating. 
-We train and evaluate the perplexity of these models on the WikiText-103 dataset (CITE).
-
-[INSERT RESULTS SUMMARY]
-
 
 \subsection{Problem Setup and Example}
 % Define task clearly (input/output, objective).
 % Provide one concrete motivating example.
 
-\subsection{Why This Problem Matters}
-% Scientific relevance and/or real-world impact.
+We train four models: a 85M parameter GPT-2 style transformer, a transformer with an extra dense MLP layer to match the later Engram models' parameter count,
+a transformer with an Engram module with gating fixed at $\alpha_t = 0.5$ (removing the contextual gating), and a transformer with an Engram module with learnable gating. 
+We train and evaluate the perplexity of these models on the WikiText-103 dataset \cite{merity2016pointer}.
 
-\subsection{Why It Is Difficult}
-% Describe failure modes of simple baseline(s) or obvious approaches.
+[INSERT RESULTS SUMMARY]
+
+
+
 
 \section{Progress So Far (Empirical Project)}
 % Keep this section if your project is empirical.
 % If your project is a survey, replace this entire section with Section 2A below.
+We have implemented an end-to-end training pipeline in PyTorch, including dataset ingestion, three model variants, optimization with warmup/decay scheduling, periodic validation, and checkpoint resume/save logic.
+The current codebase supports direct comparison between dense and memory-augmented architectures under matched training conditions.
 
 \subsection{Methods}
 % Describe implemented method with enough detail for reimplementation.
 % Include model architecture, algorithms, and any equations/figures needed.
 % Mention what is already implemented vs. in progress.
+Our implementation consists of (i) a shared GPT-2 style decoder-only backbone, (ii) model-specific adapter modules, and (iii) a unified causal language-model training objective.
+
+\paragraph{Data ingestion and preprocessing.}
+We load \texttt{wikitext-103-raw-v1} via HuggingFace \texttt{datasets} and tokenize with the GPT-2 tokenizer (\texttt{AutoTokenizer}, fast mode).
+If no pad token is defined, we set pad to EOS for consistent batching.
+After tokenization, we concatenate token streams within each split and chunk into fixed-length sequences of length 512.
+Each chunk is used as \texttt{input\_ids}, and \texttt{labels} are copied from \texttt{input\_ids}.
+The actual next-token shift is applied inside the loss function.
+
+\paragraph{Backbone architecture.}
+All model variants share the same backbone defined in \texttt{modeling.py}:
+token and positional embeddings, 12 transformer blocks, RMSNorm pre-normalization, causal multi-head self-attention, and a 2-layer GELU MLP in each block.
+The language-model head is weight-tied with token embeddings.
+The training loss is standard teacher-forced causal cross-entropy, implemented by aligning $\texttt{logits}[:, :-1]$ with $\texttt{labels}[:, 1:]$.
+
+\paragraph{Compared model variants.}
+We currently train three variants from the same base configuration:
+\begin{itemize}
+	\item \textbf{BaselineLM}: shared dense transformer backbone only.
+	\item \textbf{ParamsControlLM}: adds a residual \texttt{ControlAdapter} (RMSNorm $\rightarrow$ up-projection $\rightarrow$ GELU $\rightarrow$ down-projection) at selected layers to provide a parameter-count control condition.
+	\item \textbf{EngramLM}: adds an \texttt{EngramAdapter} at the same selected layers.
+\end{itemize}
+
+\paragraph{Engram adapter implementation.}
+Our Engram module uses hash-addressed n-gram memory with orders $(2,3)$ inserted at layers $(2,6)$.
+For each layer/order/head, we allocate a separate embedding table with prime table sizes to reduce collisions.
+Given token IDs, we construct shifted n-gram contexts, compute XOR-style hash mixes with layer-specific odd multipliers, and retrieve per-head memory embeddings.
+Retrieved memory is concatenated and projected to key/value vectors.
+The query comes from current hidden states.
+A scalar gate per token is either learnable ($\sigma((q\cdot k)/\sqrt{d})$) or fixed at 0.5 for ablation.
+The final memory update includes a depthwise causal short-convolution branch and is added residually to the block output.
+
+\paragraph{Training loop status.}
+We have implemented a full optimizer-step loop with gradient accumulation, gradient clipping, scheduler stepping, periodic validation perplexity, CSV logging, checkpoint save/resume, and final test-set perplexity export.
+This infrastructure is complete and currently used for all model variants.
+
 
 \subsection{Experiments}
 % Dataset(s): name, split details, preprocessing, and citations.
 % Evaluation metrics and rationale.
 % Training/inference setup: key hyperparameters, compute budget, runtime.
 % Baseline(s): simple and strong baselines used for comparison.
+\paragraph{Dataset and splits.}
+All experiments use WikiText-103 with the standard train/validation/test splits provided by HuggingFace \cite{merity2016pointer}.
+Preprocessing follows the fixed-length chunking procedure described above (block size 512), with no additional corpus filtering beyond tokenizer processing.
+
+\paragraph{Evaluation metric.}
+Our primary metric is perplexity (PPL), computed as $\exp(mean(L_{CE}))$ on validation and test batches.
+Evaluation uses the same shifted causal objective as training.
+During training, validation PPL is measured every 5{,}000 optimizer steps; final reporting includes test PPL (up to 500 test batches in the current script).
+
+\paragraph{Training configuration.}
+Current default settings are: batch size 8, gradient accumulation 4 (effective batch size 32), 100{,}000 optimizer steps, AdamW ($\texttt{lr}=3\times10^{-4}$, weight decay 0.1), linear warmup for 2{,}000 steps, cosine decay to $10^{-5}$, and gradient clipping at 1.0.
+We train on CUDA when available (otherwise CPU), use deterministic seeds for Python/NumPy/PyTorch, and log step/loss/PPL/LR to per-model CSV files.
+Checkpoints are saved every 10{,}000 steps and can be resumed from disk.
+
+\paragraph{Comparison protocol.}
+The active comparison includes:
+\begin{itemize}
+	\item \textbf{Dense baseline} (BaselineLM),
+	\item \textbf{Parameter-control baseline} (ParamsControlLM), and
+	\item \textbf{Engram memory model} (EngramLM), with both frozen-gate and learnable-gate settings.
+\end{itemize}
+All variants share tokenizer, data pipeline, sequence length, optimization schedule, and evaluation procedure to isolate effects of memory augmentation versus added dense parameters.
 
 \subsection{Results}
 % Present quantitative/qualitative results using tables/figures.
@@ -122,34 +185,24 @@ We train and evaluate the perplexity of these models on the WikiText-103 dataset
 % Required by spec: concrete and reasonable next steps.
 % It is okay if this differs from the proposal; explain what changed and why.
 
+With the training loop implemented and initial experiments underway, our next steps are to analyze validation perplexity trends across the three model variants, perform final test-set evaluation, 
+and perform diagnostic analyses to understand the contribution of the Engram module versus added parameters. For diagnostic analyses, we plan to 
+compare the \textbf{ParamsControlLM} and \textbf{EngramLM} (both frozen and learnable gate variants) on several tasks that require different degrees of knowledge retrieval and compositional reasoning,
+such as named-entity prediction and formulaic phrase completion. We will also visualize the gating scalar $\alpha_t$ using heatmaps to confirm activation patterns similar to those in Figure 7 of \cite{cheng2026engram}, that is,
+high activations for tokens that complete n-gram patterns.
+
 \subsection{Planned Milestones}
 \begin{itemize}
-	\item Milestone 1 (Date):
-	\item Milestone 2 (Date):
-	\item Milestone 3 (Date):
+	\item Milestone 1 (4/21/2026): Complete training runs for all model variants and report validation \& test perplexities.
+	\item Milestone 2 (4/29/2026): Perform diagnostic analyses comparing ParamsControlLM and EngramLM on knowledge retrieval vs compositional reasoning tasks.
+	\item Milestone 3 (5/5/2026): Visualize gating scalar activations and compare to expected patterns.
+	\item Milestone 4 (5/7/2026): Finalize report with results, analyses, and discussion.
 \end{itemize}
 
-\subsection{Remaining Experiments / Analyses}
-\begin{itemize}
-	\item Planned experiment or analysis A:
-	\item Planned experiment or analysis B:
-	\item Planned ablation/error analysis:
-\end{itemize}
-
-\subsection{Risks and Mitigations}
-\begin{itemize}
-	\item Risk 1 and mitigation:
-	\item Risk 2 and mitigation:
-\end{itemize}
-
-\section{References}
 % Use BibTeX if possible.
 % Empirical project midway target: >= 3 references (model, dataset, related methods).
 % Survey project midway target: 3--5 references per taxonomy category,
 % and ideally 10--15 total by midway stage.
 
-% Example:
-% \bibliographystyle{acl_natbib}
-% \bibliography{custom}
-
+\bibliography{refs}
 \end{document}
