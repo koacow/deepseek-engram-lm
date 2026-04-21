@@ -1,5 +1,5 @@
 \documentclass[11pt]{article}
-\usepackage[review]{acl}
+\usepackage{acl}
 \usepackage{times}
 \usepackage{latexsym}
 \usepackage[T1]{fontenc}
@@ -67,7 +67,7 @@ This project aims to answer the question: Does n-gram conditional memory alone b
 % Describe failure modes of simple baseline(s) or obvious approaches.
 
 Answering this question comes with a few engineering challenges. First, we must adapt forward pass demonstration in the public Engram repository to a full training loop for a 85M parameter GPT-2 style transformer. We also 
-simplify the multi-branch residual stream, which prior work has shown to be a key driver of Engram's performance (Larsson et al., 2017; Szegedy et al., 2015; Xie et al., 2025; Zhu et al., 2025), to a single branch. Finally,
+simplify the multi-branch residual stream, which prior work has shown to be a key driver of Engram's performance \cite{larsson2017fractalnet,szegedy2014goingdeeperconvolutions,xie2026mhcmanifoldconstrainedhyperconnections,zhu2025hyperconnections}, to a single branch. Finally,
 we must reproduce the paper's tokenizer compression technique, which was adapted to the DeepSeek 128k tokenizer, to work for GPT-2's 50k tokenizer.
 
 \subsection{Problem Setup and Example}
