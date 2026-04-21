@@ -29,11 +29,10 @@ A Minimal Replication of DeepSeek's Engram}
 % -----------------------------------------------------------------------------
 
 \begin{abstract}
-% (< 250 words)
-% 1-2 sentences: problem/task and why it matters.
-% 1-2 sentences: what you have implemented/read so far.
-% 1-2 sentences: key findings to date.
-% 1 sentence: concrete next steps before final report.
+Large language models must balance compositional reasoning with efficient retrieval of fixed, local patterns such as multi-token entities and formulaic phrases. DeepSeek's Engram introduces conditional n-gram memory for this purpose, but reported gains are entangled with large-scale MoE training and architectural changes, making it unclear whether conditional memory alone helps smaller dense models. 
+We study this question by implementing an end-to-end PyTorch replication on WikiText-103 using a GPT-2 style 85M-parameter decoder-only backbone. Our framework includes three matched variants: a dense baseline, a parameter-control model with extra dense adapters, and Engram-augmented models with either frozen or learnable gates, all trained under the same tokenizer, data pipeline, optimization schedule, and evaluation protocol. 
+In initial runs, the dense baseline currently achieves the best validation perplexity (28.72), while Engram variants underperform on final perplexity (34.95 and 35.88 for learnable and frozen gates, respectively). However, both Engram variants converge substantially faster (about 34k steps) than the dense baseline (53.7k steps), suggesting a possible optimization or parameter-efficiency advantage despite weaker end perplexity in this setting. 
+Before the final report, we will complete remaining control runs, run test-set evaluation for all variants, and perform diagnostic analyses on various language modeling tasks and visualize gate activations to isolate when conditional memory is beneficial to small dense transformers.
 \end{abstract}
 
 \section{Introduction}
