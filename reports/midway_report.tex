@@ -5,6 +5,8 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{microtype}
+\usepackage{graphicx}
+\graphicspath{{./figs}}
 
 \title{Does N-gram Conditional Memory Help Small Dense Transformers?
 A Minimal Replication of DeepSeek's Engram}
@@ -78,9 +80,9 @@ a transformer with an Engram module with gating fixed at $\alpha_t = 0.5$ (remov
 We train and evaluate the perplexity of these models on the WikiText-103 dataset \cite{merity2016pointer}.
 
 The key comparison is between the second and fourth models: if the Engram module provides a unique benefit beyond just adding more parameters, then we should see a significant perplexity improvement in the fourth model compared to the second, even though they have the same parameter count.
-After an initial training run, we find that the BaselineLM achieved the lowest training loss and validation perplexity at 3.2117 and 28.7229, respectively.
-It is followed by the EngramLM with learnable gate (3.3184 training loss, 34.9481 validation PPL), the EngramLM with frozen gate (3.2651 training loss, 35.8792 validation PPL), and the ParamsControlLM (TODO training loss, TODO validation PPL).
-Even though the Engram models performed slightly worse than the dense baseline, they train signinificantly faster, with the learnable-gate variant converging in 34{,}000 steps and the frozen-gate variant converging in 34{,}200 steps, compared to 53{,}700 steps for the dense baseline.
+After an initial training run, we find that the ParamsControlLM achieved the lowest training loss and validation perplexity at 3.1979 and 28.1504, respectively.
+It is followed by the BaselineLM (3.2117 training loss, 28.7229 validation PPL), the EngramLM with learnable gate (3.3184 training loss, 34.9481 validation PPL), and the EngramLM with frozen gate (3.2651 training loss, 35.8792 validation PPL).
+Even though the Engram models performed slightly worse than the dense baseline, they train signinificantly faster, with the learnable-gate variant converging in 34{,}000 steps and the frozen-gate variant converging in 34{,}200 steps, compared to 53{,}700 steps for the dense baseline and 52{,}500 steps for the parameter-control baseline.
 This suggests that the Engram module may provide be more parameter-efficient for learning, even if it does not achieve the lowest perplexity in this setting. We will perform further analyses to understand the training dynamics and the contribution of the Engram module.
 
 \section{Progress So Far (Empirical Project)}
@@ -164,7 +166,7 @@ All variants share tokenizer, data pipeline, sequence length, optimization sched
 % Briefly interpret trends: expected vs observed behavior.
 % Include any error analysis and what it suggests to improve next.
 
-The results of the initial training runs are summarized in Table \ref{tab:Table1}. The BaselineLM achieved the lowest training loss and validation perplexity, followed by the EngramLM with learnable gate, the EngramLM with frozen gate, and the ParamsControlLM. 
+The results of the initial training runs are summarized in Table \ref{tab:Table1}. Figures \ref{fig:training_loss} and \ref{fig:validation_ppl} show the training loss and validation perplexity for each model variant across the training process. The ParamsControlLM achieved the lowest training loss and validation perplexity, followed by the BaselineLM, the EngramLM with learnable gate, and the EngramLM with frozen gate. 
 However, the Engram models converged significantly faster than the dense baseline, suggesting that the Engram module may provide more parameter-efficient learning even if it does not achieve the lowest perplexity in this setting.
 \begin{table*}[h]
 \centering
@@ -173,14 +175,29 @@ However, the Engram models converged significantly faster than the dense baselin
 Model Variant & Lowest Training Loss & Lowest Validation PPL & Steps to Converge \\
 \hline
 BaselineLM & 3.2117 & 28.7229 & 53{,}700 \\
+ParamsControlLM & 3.1979 & 28.1504 & 52{,}500 \\
 EngramLM (Learnable Gate) & 3.3184 & 34.9481 & 34{,}000 \\
 EngramLM (Frozen Gate) & 3.2651 & 35.8792 & 34{,}200 \\
-ParamsControlLM & TODO & TODO & TODO \\
 \hline
 \end{tabular}
 \caption{Training loss, validation perplexity, and convergence steps for each model variant.}
 \label{tab:Table1}
 \end{table*}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.4\textwidth]{training_loss_comparison.png}
+\caption{Training loss across steps for each model variant.}
+\label{fig:training_loss}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.4\textwidth]{validation_perplexity_comparison.png}
+\caption{Validation perplexity across steps for each model variant.}
+\label{fig:validation_ppl}
+\end{figure}	
+
 With that said, the current results are suprising and we will perform further checks to confirm that the training loop and Engram module are implemented correctly, and that the hyperparameters are appropriate for all variants. 
 We will also analyze the training dynamics to understand why the Engram models converge faster but to a higher perplexity than the dense baseline.
 
