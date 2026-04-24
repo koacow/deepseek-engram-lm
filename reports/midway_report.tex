@@ -32,7 +32,7 @@ A Minimal Replication of DeepSeek's Engram}
 
 \begin{abstract}
 Large language models must balance compositional reasoning with efficient retrieval of fixed, local patterns such as multi-token entities and formulaic phrases. DeepSeek's Engram introduces conditional n-gram memory for this purpose, but reported gains are entangled with large-scale MoE training and architectural changes, making it unclear whether conditional memory alone helps smaller dense models. 
-We study this question by implementing an end-to-end PyTorch replication on WikiText-103 using a GPT-2 style 85M-parameter decoder-only backbone. Our framework includes three matched variants: a dense baseline, a parameter-control model with extra dense adapters, and Engram-augmented models with either frozen or learnable gates, all trained under the same tokenizer, data pipeline, optimization schedule, and evaluation protocol. 
+We study this question by implementing an end-to-end PyTorch replication on WikiText-103 using a GPT-2 style 85M-parameter decoder-only backbone \cite{radford2019language}. Our framework includes three matched variants: a dense baseline, a parameter-control model with extra dense adapters, and Engram-augmented models with either frozen or learnable gates, all trained under the same tokenizer, data pipeline, optimization schedule, and evaluation protocol. 
 In initial runs, the dense baseline currently achieves the best validation perplexity (28.72), while Engram variants underperform on final perplexity (34.95 and 35.88 for learnable and frozen gates, respectively). However, both Engram variants converge substantially faster (about 34k steps) than the dense baseline (53.7k steps), suggesting a possible optimization or parameter-efficiency advantage despite weaker end perplexity in this setting. 
 Before the final report, we will complete remaining control runs, run test-set evaluation for all variants, and perform diagnostic analyses on various language modeling tasks and visualize gate activations to isolate when conditional memory is beneficial to small dense transformers.
 \end{abstract}
@@ -75,7 +75,7 @@ we must reproduce the paper's tokenizer compression technique, which was adapted
 % Define task clearly (input/output, objective).
 % Provide one concrete motivating example.
 
-We train four models: a 85M parameter GPT-2 style transformer, a transformer with an extra dense MLP layer to match the later Engram models' parameter count,
+We train four models: a 85M parameter GPT-2 style transformer \cite{radford2019language}, a transformer with an extra dense MLP layer to match the later Engram models' parameter count,
 a transformer with an Engram module with gating fixed at $\alpha_t = 0.5$ (removing the contextual gating), and a transformer with an Engram module with learnable gating. 
 We train and evaluate the perplexity of these models on the WikiText-103 dataset \cite{merity2016pointer}.
 
@@ -95,7 +95,7 @@ The current codebase supports direct comparison between dense and memory-augment
 % Describe implemented method with enough detail for reimplementation.
 % Include model architecture, algorithms, and any equations/figures needed.
 % Mention what is already implemented vs. in progress.
-Our implementation consists of (i) a shared GPT-2 style decoder-only backbone, (ii) model-specific adapter modules, and (iii) a unified causal language-model training objective.
+Our implementation consists of (i) a shared GPT-2 style decoder-only backbone, (ii) model-specific adapter modules, and (iii) a unified causal language-model training objective \cite{radford2019language}.
 
 \paragraph{Data ingestion and preprocessing.}
 We load \texttt{wikitext-103-raw-v1} via HuggingFace \texttt{datasets} and tokenize with the GPT-2 tokenizer (\texttt{AutoTokenizer}, fast mode).
