@@ -5,3 +5,4 @@ tokenizers
 numpy
 sympy
 tqdm
+lm-eval
